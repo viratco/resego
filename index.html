@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Research Lite</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 0;
+            padding: 20px;
+            background: #f8f9fa;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .result-count {
+            color: #70757a;
+            margin-bottom: 20px;
+            font-size: 14px;
+        }
+
+        .paper-card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .paper-title {
+            font-size: 20px;
+            color: #1a0dab;
+            margin: 0 0 8px 0;
+            text-decoration: none;
+        }
+
+        .paper-authors {
+            color: #4d5156;
+            margin: 8px 0;
+            font-size: 14px;
+        }
+
+        .paper-meta {
+            color: #70757a;
+            font-size: 14px;
+            margin-bottom: 12px;
+        }
+
+        .tldr-section {
+            background: #f8f9fa;
+            padding: 12px;
+            border-radius: 4px;
+            margin: 15px 0;
+        }
+
+        .tldr-label {
+            font-weight: 500;
+            color: #202124;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .tldr-content {
+            color: #4d5156;
+            line-height: 1.5;
+            font-size: 14px;
+        }
+
+        .paper-actions {
+            display: flex;
+            gap: 15px;
+            margin-top: 15px;
+        }
+
+        .action-button {
+            background: none;
+            border: none;
+            color: #1a0dab;
+            cursor: pointer;
+            padding: 4px 8px;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+
+        .search-header {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        #prompt {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #dfe1e5;
+            border-radius: 24px;
+            font-size: 16px;
+        }
+
+        #searchBtn {
+            padding: 12px 24px;
+            background: #1a73e8;
+            border-radius: 24px;
+            color: white;
+            border: none;
+            cursor: pointer;
+        }
+
+        .suggestions {
+            margin: 15px 0;
+            padding: 12px;
+            background: #e3f2fd;
+            border-radius: 8px;
+        }
+
+        .suggestions-title {
+            font-size: 14px;
+            color: #1976d2;
+            margin-bottom: 8px;
+        }
+
+        .suggestion-button {
+            background: none;
+            border: 1px solid #90caf9;
+            color: #1565c0;
+            padding: 4px 8px;
+            margin: 4px;
+            border-radius: 15px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+
+        .suggestion-button:hover {
+            background: #bbdefb;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="search-header">
+            <input type="text" id="prompt" placeholder="Search research papers...">
+            <button onclick="search()" id="searchBtn">Search</button>
+        </div>
+        
+        <div class="suggestions" id="suggestionsContainer" style="display: none;">
+            <div class="suggestions-title">AI Search Suggestions:</div>
+            <div id="suggestionsList"></div>
+        </div>
+
+        <div id="results"></div>
+    </div>
+
+    <script>
+        async function search() {
+            const promptInput = document.getElementById('prompt');
+            const searchBtn = document.getElementById('searchBtn');
+            const resultsDiv = document.getElementById('results');
+            const suggestionsContainer = document.getElementById('suggestionsContainer');
+
+            promptInput.disabled = true;
+            searchBtn.disabled = true;
+            resultsDiv.innerHTML = '<div class="loading">🔍 Searching academic databases...</div>';
+            suggestionsContainer.style.display = 'none';
+
+            try {
+                const controller = new AbortController();
+                const timeoutId = setTimeout(() => controller.abort(), 45000);
+
+                const response = await fetch('http://localhost:3000/search', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ prompt: promptInput.value.trim() }),
+                    signal: controller.signal
+                });
+
+                clearTimeout(timeoutId);
+                const data = await response.json();
+
+                if (!data.success) {
+                    throw new Error(data.error || 'Request failed');
+                }
+
+                // Handle suggestions
+                if (data.suggestions && data.suggestions.length > 0) {
+                    const suggestionsList = document.getElementById('suggestionsList');
+                    suggestionsContainer.style.display = 'block';
+                    suggestionsList.innerHTML = data.suggestions
+                        .map(suggestion => `
+                            <button class="suggestion-button" 
+                                    onclick="document.getElementById('prompt').value = '${suggestion}'; search()">
+                                ${suggestion}
+                            </button>
+                        `).join('');
+                }
+
+                // Display results
+                resultsDiv.innerHTML = `
+                    <div class="result-count">About ${data.results.length} results for "${promptInput.value}"</div>
+                `;
+
+                data.results.forEach(paper => {
+                    const paperCard = document.createElement('div');
+                    paperCard.className = 'paper-card';
+                    paperCard.innerHTML = `
+                        <h2 class="paper-title">${paper.title}</h2>
+                        <div class="paper-authors">${paper.authors.join(' · ')}</div>
+                        <div class="paper-meta">
+                            ${paper.source !== 'arXiv' ? `<span>${paper.source}</span> · ` : ''}
+                            <span>${paper.year || 'Unknown date'}</span> · 
+                            <span>${paper.metadata?.['container-title']?.[0] || 'Unknown journal'}</span>
+                        </div>
+                        <div class="tldr-section">
+                            <div class="tldr-label">TLDR</div>
+                            <div class="tldr-content">${paper.abstract || 'No abstract available'}</div>
+                        </div>
+                        <div class="paper-actions">
+                            ${paper.source !== 'arXiv' ? `<button class="action-button">${paper.source}</button>` : ''}
+                            <button class="action-button">Save</button>
+                            <button class="action-button">Cite</button>
+                        </div>
+                    `;
+                    resultsDiv.appendChild(paperCard);
+                });
+
+            } catch (error) {
+                resultsDiv.innerHTML = `
+                    <div class="error">
+                        <strong>⚠️ Error:</strong> ${error.message}
+                        <button class="action-button" onclick="search()">🔄 Retry</button>
+                    </div>
+                `;
+            } finally {
+                promptInput.disabled = false;
+                searchBtn.disabled = false;
+            }
+        }
+    </script>
+</body>
+</html>
